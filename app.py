@@ -133,26 +133,113 @@ if uploaded_file:
                 mime="text/csv"
             )
 
-        with tab2:
-            st.subheader("📅 Calendar View")
+       with tab2:
+    st.subheader("📅 Calendar View")
 
-            events = []
-            for _, row in df.iterrows():
-                if pd.notna(row.get("Dev Date")):
-                    status = row["Delay Status"]
-                    color = {
-                        "Overdue": "#ff4d4d",
-                        "Late": "#ffa64d",
-                        "Issue": "#66ccff",
-                        "On Time": "#85e085",
-                        "On Track": "#cccccc",
-                        "": "#f2f2f2"
-                    }.get(status, "#cccccc")
+    # =========================
+    # CONTROLS
+    # =========================
+    col1, col2 = st.columns(2)
 
-                    events.append({
-                        "title": f"{row.get('Status')} | {status}",
-                        "start": row["Dev Date"].strftime("%Y-%m-%d"),
-                        "color": color
-                    })
+    date_source = col1.selectbox(
+        "Select Date Source",
+        ["Auto", "Dev Date", "End Date", "Created Date"]
+    )
 
-            calendar(events=events, options={"initialView": "dayGridMonth", "height": 700})
+    status_filter_cal = col2.multiselect(
+        "Filter Status",
+        options=df["Delay Status"].unique(),
+        default=df["Delay Status"].unique()
+    )
+
+    filtered_cal_df = df[df["Delay Status"].isin(status_filter_cal)]
+
+    # =========================
+    # BUILD EVENTS
+    # =========================
+    events = []
+
+    for _, row in filtered_cal_df.iterrows():
+
+        event_date = None
+
+        # Manual selection
+        if date_source == "Dev Date" and pd.notna(row.get("Dev Date")):
+            event_date = row["Dev Date"]
+
+        elif date_source == "End Date" and pd.notna(row.get("End Date")):
+            event_date = row["End Date"]
+
+        elif date_source == "Created Date" and pd.notna(row.get("Created Date")):
+            event_date = row["Created Date"]
+
+        # AUTO fallback logic
+        elif date_source == "Auto":
+            if pd.notna(row.get("Dev Date")):
+                event_date = row["Dev Date"]
+            elif pd.notna(row.get("End Date")):
+                event_date = row["End Date"]
+            elif pd.notna(row.get("Created Date")):
+                event_date = row["Created Date"]
+
+        if event_date is not None:
+            status = row["Delay Status"]
+
+            color = {
+                "Overdue": "#ff4d4d",
+                "Late": "#ffa64d",
+                "Issue": "#66ccff",
+                "On Time": "#85e085",
+                "On Track": "#cccccc",
+                "": "#f2f2f2"
+            }.get(status, "#cccccc")
+
+            events.append({
+                "title": f"{row.get('Status')} | {status}",
+                "start": event_date.strftime("%Y-%m-%d"),
+                "color": color,
+                "extendedProps": {
+                    "status": status,
+                    "dev": str(row.get("Dev Date")),
+                    "end": str(row.get("End Date")),
+                    "created": str(row.get("Created Date"))
+                }
+            })
+
+    # =========================
+    # AUTO FOCUS DATE
+    # =========================
+    min_date = None
+    if len(events) > 0:
+        min_date = min([e["start"] for e in events])
+
+    calendar_options = {
+        "initialView": "dayGridMonth",
+        "height": 700,
+    }
+
+    if min_date:
+        calendar_options["initialDate"] = min_date
+
+    # =========================
+    # RENDER CALENDAR
+    # =========================
+    cal_data = calendar(events=events, options=calendar_options)
+
+    # =========================
+    # CLICK EVENT DETAILS
+    # =========================
+    st.subheader("📌 Selected Event Details")
+
+    if cal_data and "eventClick" in cal_data:
+        event = cal_data["eventClick"]["event"]
+
+        st.write("### Event Info")
+        st.write(f"**Title:** {event.get('title')}")
+        st.write(f"**Date:** {event.get('start')}")
+        st.write(f"**Status:** {event['extendedProps'].get('status')}")
+        st.write(f"**Dev Date:** {event['extendedProps'].get('dev')}")
+        st.write(f"**End Date:** {event['extendedProps'].get('end')}")
+        st.write(f"**Created Date:** {event['extendedProps'].get('created')}")
+    else:
+        st.info("Click on a calendar event to see details.")
